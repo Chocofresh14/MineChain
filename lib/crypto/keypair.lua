@@ -39,7 +39,7 @@ function M.addressFrom(pubKey)
 end
 
 -- Sauvegarde les cles sur le disque OC
--- path : dossier de destination (ex: "/etc/blockchain/wallet/")
+-- path : dossier de destination (ex: "/etc/minechain/wallet/")
 function M.save(keys, path)
   if not fs.exists(path) then
     fs.makeDirectory(path)
