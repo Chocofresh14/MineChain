@@ -78,8 +78,11 @@ function M.newBlock(block)
   return { block = block }
 end
 
-function M.newTx(transaction)
-  return { transaction = transaction }
+function M.newTx(transaction, publicKey)
+  return {
+    transaction = transaction,
+    public_key  = publicKey
+  }
 end
 
 function M.getChain(fromIndex)
