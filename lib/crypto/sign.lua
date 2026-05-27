@@ -12,6 +12,11 @@ local function data()
   return _data
 end
 
+-- Signe un message avec une cle privee
+-- On signe le hash du message (bonne pratique)
+-- message : string
+-- privateKey : userdata (cle privee EC)
+-- Retourne : signature en base64 (string stockable/transmissible)
 function M.sign(message, privateKey)
   assert(type(message) == "string", "sign: message doit etre une string")
   local h   = hash.sha256raw(message)
@@ -19,6 +24,11 @@ function M.sign(message, privateKey)
   return data().encode64(sig)
 end
 
+-- Verifie une signature
+-- message : string originale
+-- publicKey : userdata (cle publique EC)
+-- signature : string base64 (retournee par sign())
+-- Retourne : boolean
 function M.verify(message, publicKey, signature)
   assert(type(message) == "string", "verify: message doit etre une string")
   assert(type(signature) == "string", "verify: signature doit etre une string")

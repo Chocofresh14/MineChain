@@ -14,11 +14,16 @@ local function data()
   return _data
 end
 
+-- Derive une adresse depuis une cle publique
+-- Format : 40 premiers caracteres hex du sha256(cle serialisee)
+-- Similaire au principe d'une adresse Ethereum
 local function deriveAddress(pubKey)
   local h = hash.sha256(pubKey.serialize())
   return h:sub(1, 40)
 end
 
+-- Genere une nouvelle paire de cles
+-- Retourne : { public, private, address }
 function M.generate()
   local pub, priv = data().generateKeyPair(256)
   return {
@@ -28,10 +33,13 @@ function M.generate()
   }
 end
 
+-- Derive l'adresse depuis une cle publique existante
 function M.addressFrom(pubKey)
   return deriveAddress(pubKey)
 end
 
+-- Sauvegarde les cles sur le disque OC
+-- path : dossier de destination (ex: "/etc/blockchain/wallet/")
 function M.save(keys, path)
   if not fs.exists(path) then
     fs.makeDirectory(path)
@@ -50,6 +58,8 @@ function M.save(keys, path)
   print("Cles sauvegardees dans : " .. path)
 end
 
+-- Charge les cles depuis le disque
+-- Retourne : keys ou nil, erreur
 function M.load(path)
   local function read(filename)
     local f = io.open(path .. filename, "rb")
@@ -64,7 +74,7 @@ function M.load(path)
   local address = read("address")
 
   if not pubRaw or not privRaw then
-    return nil, "Clés introuvables dans : " .. path
+    return nil, "Cles introuvables dans : " .. path
   end
 
   local pub  = data().deserializeKey(serialization.unserialize(pubRaw), "ec-public")
@@ -77,6 +87,7 @@ function M.load(path)
   }
 end
 
+-- Verifie si des cles existent deja dans le dossier
 function M.exists(path)
   return fs.exists(path .. "key.pub")
       and fs.exists(path .. "key.priv")
