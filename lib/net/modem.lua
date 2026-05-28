@@ -24,6 +24,11 @@ local function bufferPop(port)
   end
 end
 
+-- Remet un message dans le buffer (pour ne pas le perdre si on ne veut pas le traiter maintenant)
+function M.bufferBack(port, remoteAddr, msgType, data)
+  bufferPush(port, { remoteAddr, msgType, data })
+end
+
 -- Ouvre un port d'ecoute
 function M.open(port)
   _modem.open(port)

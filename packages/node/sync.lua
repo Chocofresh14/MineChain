@@ -184,8 +184,10 @@ local function request(peerAddr, msgType, payload, expectedType, timeout)
 
     if remoteAddr == peerAddr and rType == expectedType then
       return rData
+    elseif remoteAddr then
+      -- message inattendu : on le remet dans le buffer pour ne pas le perdre
+      net.bufferBack(PORT, remoteAddr, rType, rData)
     end
-    -- message non attendu : on ignore et on reboucle (il est bufferise par net.receive)
   end
 
   return nil

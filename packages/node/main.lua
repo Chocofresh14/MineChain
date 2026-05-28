@@ -312,7 +312,10 @@ local function start()
   while true do
 
     -- Ecoute PORT_NODE (blocs, tx, sync)
-    local remoteAddr, msgType, data = net.receive(PORT, 0)
+    local remoteAddr, msgType, data = net.receive(PORT, 0.05)
+    if remoteAddr then
+      print("[main] Port " .. PORT .. " <- " .. tostring(msgType) .. " de " .. remoteAddr)
+    end
     if remoteAddr and msgType then
       local handler = handlers[msgType]
       if handler then
