@@ -81,44 +81,51 @@ function M.run()
       coroutine.yield()
     end
 
-    -- Construit un nouveau bloc candidat
-    local candidate = buildCandidate()
-    local nonce     = 0
-    _reset          = false
+    -- Attend qu'il y ait au moins une tx (hors coinbase) OU
+    -- qu'un certain temps se soit ecoule depuis le dernier bloc
+    local pending = mempool.getPending(1)
+    if #pending == 0 then
+      coroutine.yield()
+    else
+      -- Construit un nouveau bloc candidat
+      local candidate = buildCandidate()
+      local nonce     = 0
+      _reset          = false
 
-    print(string.format("[miner] Bloc #%d en cours... (%d tx)",
-      candidate.index, #candidate.transactions))
+      print(string.format("[miner] Bloc #%d en cours... (%d tx)",
+        candidate.index, #candidate.transactions))
 
-    -- Boucle PoW
-    while true do
-      -- Un nouveau bloc est arrive depuis le reseau -> on recommence
-      if _reset then
-        print("[miner] Reset : nouveau bloc reçu, on recommence.")
-        break
-      end
-
-      -- Tente un batch de nonces avant de yield
-      for _ = 1, BATCH do
-        candidate.nonce = nonce
-        candidate.hash  = block.computeHash(candidate)
-
-        -- Verifie le PoW
-        if candidate.hash:sub(1, DIFFICULTY) == TARGET_PREFIX then
-          -- Bloc trouve !
-          print(string.format(
-            "[miner] Bloc #%d mine ! nonce=%d hash=%s",
-            candidate.index, nonce, candidate.hash:sub(1, 16) .. "..."
-          ))
-          if _onFound then _onFound(candidate) end
-          _reset = true -- force la reconstruction d'un nouveau candidat
+      -- Boucle PoW
+      while true do
+        -- Un nouveau bloc est arrive depuis le reseau -> on recommence
+        if _reset then
+          print("[miner] Reset : nouveau bloc reçu, on recommence.")
           break
         end
 
-        nonce = nonce + 1
-      end
+        -- Tente un batch de nonces avant de yield
+        for _ = 1, BATCH do
+          candidate.nonce = nonce
+          candidate.hash  = block.computeHash(candidate)
 
-      -- Yield pour laisser la place aux evenements
-      coroutine.yield()
+          -- Verifie le PoW
+          if candidate.hash:sub(1, DIFFICULTY) == TARGET_PREFIX then
+            -- Bloc trouve !
+            print(string.format(
+              "[miner] Bloc #%d mine ! nonce=%d hash=%s",
+              candidate.index, nonce, candidate.hash:sub(1, 16) .. "..."
+            ))
+            if _onFound then _onFound(candidate) end
+            _reset = true -- force la reconstruction d'un nouveau candidat
+            break
+          end
+
+          nonce = nonce + 1
+        end
+
+        -- Yield pour laisser la place aux evenements
+        coroutine.yield()
+      end
     end
   end
 end

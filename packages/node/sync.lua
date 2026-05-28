@@ -127,33 +127,8 @@ end
 
 -- Synchronisation au demarrage
 
--- Demande le dernier bloc de chaque peer pour trouver le plus avance
--- Retourne : adresse du meilleur peer, son dernier index
-local function findBestPeer()
-  local bestAddr  = nil
-  local bestIndex = lastBlock().index
-
-  for _, peerAddr in ipairs(peerList()) do
-    local data = request(
-      peerAddr,
-      proto.MSG.GET_LAST, proto.getLast(),
-      proto.MSG.LAST_BLOCK, 3
-    )
-
-    if data and data.block and type(data.block.index) == "number" then
-      print(string.format("[sync] Peer %s : bloc #%d", peerAddr, data.block.index))
-      if data.block.index > bestIndex then
-        bestIndex = data.block.index
-        bestAddr  = peerAddr
-      end
-    end
-  end
-
-  return bestAddr, bestIndex
-end
-
 -- Telecharge et adopte la chaine d'un peer si elle est plus longue et valide
-local function syncFromPeer(peerAddr)
+function M.syncFromPeer(peerAddr)
   print("[sync] Synchronisation depuis " .. peerAddr .. "...")
 
   local newChain  = {}
@@ -222,7 +197,34 @@ function M.syncOnStart()
     return
   end
 
-  local bestPeer, bestIndex = findBestPeer()
+  -- Attend passivement les LAST_BLOCK qui arrivent en reponse aux JOIN
+  -- (announceTopeers declenche des LAST_BLOCK automatiquement)
+  -- ET envoie GET_LAST explicitement a chaque peer
+  local bestPeer  = nil
+  local bestIndex = lastBlock().index
+
+  -- Envoie GET_LAST a tous les peers connus
+  for _, peerAddr in ipairs(peerList()) do
+    net.send(peerAddr, PORT, proto.MSG.GET_LAST, proto.getLast())
+  end
+
+  -- Ecoute pendant 10s tous les LAST_BLOCK qui arrivent
+  -- (reponses aux JOIN + reponses aux GET_LAST)
+  local deadline = computer.uptime() + 10
+  while computer.uptime() < deadline do
+    local remoteAddr, rType, rData = net.receive(PORT, 1)
+
+    if remoteAddr and rType == proto.MSG.LAST_BLOCK then
+      if rData and rData.block and type(rData.block.index) == "number" then
+        print(string.format("[sync] Peer %s : bloc #%d",
+          remoteAddr, rData.block.index))
+        if rData.block.index > bestIndex then
+          bestIndex = rData.block.index
+          bestPeer  = remoteAddr
+        end
+      end
+    end
+  end
 
   if not bestPeer then
     print("[sync] Notre chaine est a jour (bloc #" .. lastBlock().index .. ").")
@@ -230,11 +232,11 @@ function M.syncOnStart()
   end
 
   print(string.format(
-    "[sync] Peer plus avance trouve (bloc #%d vs notre #%d).",
+    "[sync] Peer plus avance : bloc #%d vs notre #%d.",
     bestIndex, lastBlock().index
   ))
 
-  syncFromPeer(bestPeer)
+  M.syncFromPeer(bestPeer)
 end
 
 -- ─── Reception d'un nouveau bloc ───────────────────────────────────────────
@@ -269,8 +271,7 @@ function M.onNewBlock(remoteAddr, newBlock)
     "[sync] Gap detecte : notre #%d, reçu #%d. Resync depuis %s...",
     lastBlock().index, newBlock.index, remoteAddr
   ))
-  syncFromPeer(remoteAddr)
-  return false
+  return false, remoteAddr
 end
 
 -- Reponse aux requêtes des autres nodes

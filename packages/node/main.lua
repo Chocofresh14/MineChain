@@ -20,7 +20,15 @@ local chain = {}
 -- peers[addr] = { last_seen, direction = "in"|"out" }
 local peers = {}
 
+local _resyncPeer = nil
+
 -- Helpers
+
+local function peerList_main()
+  local list = {}
+  for addr, _ in pairs(peers) do table.insert(list, addr) end
+  return list
+end
 
 local function lastBlock()
   return chain[#chain]
@@ -91,13 +99,14 @@ local function connectToSeeds()
       proto.join(net.address()))
   end
 
-  local deadline = os.time() + 5
-  while os.time() < deadline do
+  local deadline = computer.uptime() + 2
+  while computer.uptime() < deadline do
     local remoteAddr, msgType, data = net.receive(proto.PORT_SEED, 1)
     if remoteAddr and msgType == proto.MSG.PEERS then
       for _, peerAddr in ipairs(data.peers or {}) do
         addPeerOut(peerAddr)
       end
+      break
     end
   end
 
@@ -155,7 +164,7 @@ end
 handlers[proto.MSG.NEW_BLOCK] = function(remoteAddr, data)
   if not proto.validate(proto.MSG.NEW_BLOCK, data) then return end
 
-  local adopted = sync.onNewBlock(remoteAddr, data.block)
+  local adopted, resyncAddr = sync.onNewBlock(remoteAddr, data.block)
   if adopted then
     -- Nettoie la mempool des tx confirmees
     mempool.removeConfirmed(data.block)
@@ -169,6 +178,21 @@ handlers[proto.MSG.NEW_BLOCK] = function(remoteAddr, data)
 
     -- Signale au miner de recommencer sur le nouveau dernier bloc
     if MINING then miner.reset() end
+
+  elseif resyncAddr then
+    -- Gap detecte, programmer une resync hors handler
+    _resyncPeer = resyncAddr
+  end
+end
+
+handlers[proto.MSG.LAST_BLOCK] = function(remoteAddr, data)
+  if not data.block then return end
+  local peerIndex = data.block.index
+  local ourIndex  = lastBlock().index
+  if peerIndex > ourIndex + 1 then
+    print(string.format("[main] Peer plus avance (#%d vs #%d), resync...",
+      peerIndex, ourIndex))
+    _resyncPeer = remoteAddr
   end
 end
 
@@ -265,10 +289,12 @@ local function start()
   -- Boucle principale
   print("[main] En ecoute...\n")
 
-  local lastPing    = os.time()
-  local lastRefresh = os.time()
+  local lastPing    = computer.uptime()
+  local lastRefresh = computer.uptime()
+  local lastSyncCheck = computer.uptime()
   local PING_EVERY    = 30 -- ping les peers toutes les 30s
   local REFRESH_EVERY = 60 -- refresh de la liste des peers depuis les seeds
+  local SYNC_CHECK_EVERY = 60 -- re-verifie toutes les 60s
 
   while true do
 
@@ -296,6 +322,14 @@ local function start()
       end
     end
 
+    if _resyncPeer then
+      local peer  = _resyncPeer
+      _resyncPeer = nil
+      print("[main] Resync depuis " .. peer .. "...")
+      sync.syncFromPeer(peer)
+      if MINING then miner.reset() end
+    end
+
     -- Avance le miner d'un pas (batch de nonces)
     if minerThread and coroutine.status(minerThread) == "suspended" then
       local ok, err = coroutine.resume(minerThread)
@@ -306,17 +340,26 @@ local function start()
     end
 
     -- Ping periodique des peers pour detecter les morts
-    if (os.time() - lastPing) >= PING_EVERY then
+    if (computer.uptime() - lastPing) >= PING_EVERY then
       broadcast(proto.MSG.PING, proto.ping())
-      lastPing = os.time()
+      lastPing = computer.uptime()
     end
 
     -- Refresh periodique depuis les seeds (fallback si NEW_PEER rate)
-    if (os.time() - lastRefresh) >= REFRESH_EVERY then
+    if (computer.uptime() - lastRefresh) >= REFRESH_EVERY then
       for _, seedAddr in ipairs(seeds) do
         net.send(seedAddr, proto.PORT_SEED, proto.MSG.LIST, {})
       end
-      lastRefresh = os.time()
+      lastRefresh = computer.uptime()
+    end
+    
+    if (computer.uptime() - lastSyncCheck) >= SYNC_CHECK_EVERY then
+      lastSyncCheck = computer.uptime()
+      -- Envoie juste GET_LAST a tous les peers, sans bloquer
+      -- La reponse LAST_BLOCK sera traitee par le handler normal
+      for _, peerAddr in ipairs(peerList_main()) do
+        net.send(peerAddr, PORT, proto.MSG.GET_LAST, proto.getLast())
+      end
     end
 
     -- Petit sleep pour ne pas saturer le CPU OC
