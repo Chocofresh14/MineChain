@@ -8,9 +8,9 @@ local M = {}
 -- Serialise les champs signables d'une transaction (ordre fixe, deterministe)
 -- On exclut "id" et "signature" (pas signes, logique)
 function M.serialize(tx)
-  return "amount=" .. tostring(tx.amount)
+  return "amount=" .. tostring(math.floor(tx.amount))
       .. ",from=" .. tostring(tx.from)
-      .. ",timestamp=" .. tostring(tx.timestamp)
+      .. ",timestamp=" .. tostring(math.floor(tx.timestamp))
       .. ",to=" .. tostring(tx.to)
 end
 
