@@ -200,6 +200,7 @@ local function discover_node()
     return nil
   end
 
+  print("[discover] " .. #nodeQueue .. " node(s) a tester : " .. table.concat(nodeQueue, ", "))
   for _, candidate in ipairs(nodeQueue) do
     if try_node(candidate) then
       return candidate

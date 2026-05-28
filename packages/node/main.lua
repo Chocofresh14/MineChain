@@ -226,6 +226,7 @@ end
 
 -- Reponse aux demandes de sync
 handlers[proto.MSG.GET_LAST]  = function(remoteAddr, data)
+  print("[main] GET_LAST recu de " .. remoteAddr)
   sync.onGetLast(remoteAddr)
 end
 
@@ -278,7 +279,7 @@ local function start()
   announceTopeers()
 
   -- Synchronise la chaine avec les peers
-  sync.syncOnStart()
+  sync.syncOnStart(handlers)
 
   -- Initialise et demarre le miner si active
   local minerThread = nil

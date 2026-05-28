@@ -257,7 +257,9 @@ function M.syncFromPeer(peerAddr)
 end
 
 -- Point d'entree : synchronisation complete au demarrage
-function M.syncOnStart()
+-- handlers : table optionnelle { ["TYPE"] = function(remoteAddr, data) }
+--   les messages non-LAST_BLOCK recus pendant la fenetre sont dispatches immediatement
+function M.syncOnStart(handlers)
   if #peerList() == 0 then
     print("[sync] Aucun peer connu, on reste sur la chaine locale.")
     return
@@ -276,6 +278,7 @@ function M.syncOnStart()
 
   -- Ecoute pendant 10s tous les LAST_BLOCK qui arrivent
   -- (reponses aux JOIN + reponses aux GET_LAST)
+  -- Les autres messages sont dispatches immediatement via handlers
   local deadline = computer.uptime() + 10
   while computer.uptime() < deadline do
     local remoteAddr, rType, rData = net.receive(PORT, 1)
@@ -289,6 +292,8 @@ function M.syncOnStart()
           bestPeer  = remoteAddr
         end
       end
+    elseif remoteAddr and rType and handlers and handlers[rType] then
+      pcall(handlers[rType], remoteAddr, rData)
     end
   end
 
