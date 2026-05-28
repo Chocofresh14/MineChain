@@ -135,9 +135,11 @@ end
 
 -- Helpers
 
+local INITIAL_BALANCE = 1000 -- solde de depart pour les tests
+
 -- Calcule le solde d'une adresse depuis une liste de blocs
 function M.balanceOf(address, blocks)
-  local balance = 0
+  local balance = INITIAL_BALANCE
   for _, block in ipairs(blocks) do
     for _, tx in ipairs(block.transactions or {}) do
       if tx.to == address then balance = balance + tx.amount end
