@@ -45,10 +45,15 @@ handlers[protocol.MSG.JOIN] = function(remoteAddr, data)
   local isNew = (peers[remoteAddr] == nil)
   refreshPeer(remoteAddr)
 
-  -- Repond avec la liste des peers
+  -- Repond au nouveau avec la liste complete
   net.send(remoteAddr, PORT, protocol.MSG.PEERS, protocol.peers(peerList()))
 
   if isNew then
+    for existingAddr, _ in pairs(peers) do
+      if existingAddr ~= remoteAddr then
+        net.send(existingAddr, PORT, protocol.MSG.NEW_PEER, { address = remoteAddr })
+      end
+    end
     print(string.format("[+] Nouveau peer : %s  (total: %d)", remoteAddr, peerCount()))
   end
 end

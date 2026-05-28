@@ -23,6 +23,11 @@ M.MSG = {
   -- data: { peers: string[] }  (liste d'adresses modem)
   PEERS = "PEERS",
 
+  -- Envoye par le seed aux nodes existants quand un nouveau node rejoint
+  -- Permet a tous les nodes d'etre notifies sans attendre le refresh
+  -- data: { address: string }
+  NEW_PEER = "NEW_PEER",
+
   -- Keep-alive
   -- Verifie qu'un node est toujours en vie
   -- data: {}
