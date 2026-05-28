@@ -328,8 +328,10 @@ local function show_block()
     local ans = input("Afficher les transactions ? (o/n)")
     if ans == "o" then
       for i, tx in ipairs(block.transactions or {}) do
-        print("  [" .. i .. "] " .. (tx.id or "sans-id"))
-        print("      " .. tx.from .. " -> " .. tx.to .. "  " .. tx.amount .. " MC")
+        print("  [" .. i .. "] ID : " .. (tx.id or "sans-id"))
+        print("      De : " .. tx.from)
+        print("      Vers : " .. tx.to)
+        print("      Montant : " .. tx.amount .. " MC")
       end
     end
   end
