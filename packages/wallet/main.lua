@@ -10,15 +10,15 @@
 local fs     = require("filesystem")
 local serial = require("serialization")
 
-local keypair = dofile("/minechain/lib/crypto/keypair.lua")
-local sha256  = dofile("/minechain/lib/crypto/sha256.lua")
-local sign    = dofile("/minechain/lib/crypto/sign.lua")
-local TxLib   = dofile("/minechain/lib/types/transaction.lua")
-local modem   = dofile("/minechain/lib/net/modem.lua")
-local protocol= dofile("/minechain/lib/net/protocol.lua")
+local keypair = dofile("crypto/keypair.lua")
+local sha256  = dofile("crypto/sha256.lua")
+local sign    = dofile("crypto/sign.lua")
+local TxLib   = dofile("types/transaction.lua")
+local modem   = dofile("net/modem.lua")
+local protocol= dofile("net/protocol.lua")
 
-local KEY_FILE  = "/minechain/wallet/keys.dat"
-local NODE_FILE = "/minechain/wallet/node.cfg"
+local KEY_FILE  = "/minechain/keys.dat"
+local NODE_FILE = "/minechain/node.cfg"
 
 local wallet = {
   pubkey  = nil,

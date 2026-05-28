@@ -1,4 +1,4 @@
-local path = "/minechain/packages/wallet/main.lua"
+local path = "/minechain/main.lua"
 
 if require("filesystem").exists(path) then
   dofile(path)
