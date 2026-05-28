@@ -250,6 +250,12 @@ end
 
 -- Demarrage
 
+local function leaveSeeds()
+  for _, seedAddr in ipairs(seeds) do
+    net.send(seedAddr, proto.PORT_SEED, proto.MSG.LEAVE, {})
+  end
+end
+
 local function start()
   -- Ouvre le port d'ecoute
   net.open(PORT)
@@ -286,6 +292,11 @@ local function start()
       print("[main] Miner demarre.")
     end
   end
+
+  -- Notifie les seeds si le programme est interrompu (Ctrl+C / shutdown)
+  event.listen("interrupted", function()
+    leaveSeeds()
+  end)
 
   -- Boucle principale
   print("[main] En ecoute...\n")

@@ -1,6 +1,6 @@
 local net = require("net/modem")
 local protocol = require("net/protocol")
-local os = require("os")
+local computer = require("computer")
 
 -- Config
 
@@ -15,7 +15,7 @@ local peers = {}
 local TIMEOUT_PEER = 120 -- secondes sans reponse -> peer mort
 local CLEAN_EVERY = 60   -- intervalle de nettoyage
 
-local lastClean = os.time()
+local lastClean = computer.uptime()
 
 -- Helpers
 
@@ -34,7 +34,7 @@ local function peerCount()
 end
 
 local function refreshPeer(addr)
-  peers[addr] = { last_seen = os.time() }
+  peers[addr] = { last_seen = computer.uptime() }
 end
 
 -- Handlers
@@ -78,7 +78,7 @@ end
 -- Nettoyage periodique
 
 local function cleanDeadPeers()
-  local now, removed = os.time(), 0
+  local now, removed = computer.uptime(), 0
 
   for addr, info in pairs(peers) do
     if (now - info.last_seen) > TIMEOUT_PEER then
@@ -94,9 +94,9 @@ local function cleanDeadPeers()
 end
 
 local function onTick()
-  if (os.time() - lastClean) >= CLEAN_EVERY then
+  if (computer.uptime() - lastClean) >= CLEAN_EVERY then
     cleanDeadPeers()
-    lastClean = os.time()
+    lastClean = computer.uptime()
   end
 end
 
