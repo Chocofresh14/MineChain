@@ -102,6 +102,10 @@ function M.validate(tx)
   -- ID coherent
   local expectedId = M.computeId(tx)
   if tx.id ~= expectedId then
+    print("[tx] ID recu    : " .. tostring(tx.id))
+    print("[tx] ID calcule : " .. tostring(expectedId))
+    print("[tx] serialize  : " .. M.serialize(tx))
+    print("[tx] signature  : " .. tostring(tx.signature))
     return false, "ID de transaction invalide"
   end
 
