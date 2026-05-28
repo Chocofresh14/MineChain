@@ -1,7 +1,7 @@
 local component = require("component")
 local event = require("event")
 local serialization = require("serialization")
-local computer = requre("computer")
+local computer = require("computer")
 
 local M = {}
 
