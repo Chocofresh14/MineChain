@@ -8,6 +8,7 @@ local miner = require("node/miner")
 local component = require("component")
 local event = require("event")
 local computer = require("computer")
+local serialization = require("serialization")
 
 local cfg = assert(loadfile("/etc/minechain/config.lua"))()
 local PORT = cfg.PORT    or 43
@@ -203,9 +204,9 @@ handlers[proto.MSG.NEW_TX] = function(remoteAddr, data)
 
   -- Reconstruit la cle publique depuis sa forme serialisee
   local ok, pubKey = pcall(function()
-    return component.data.deserializeKey(data.public_key, "ec-public")
+    return component.data.deserializeKey(serialization.unserialize(data.public_key), "ec-public")
   end)
-  if not ok then
+  if not ok or not pubKey then
     print("[main] Cle publique invalide dans NEW_TX")
     return
   end
