@@ -33,9 +33,9 @@ end
 
 -- Sauvegarde les block sur le disque dans des fichiers différents
 local function saveBlock(block)
-  local dir = fs.path(BLOCKS_DIR)
-  if not fs.exists(dir) then fs.makeDirectory(dir) end
-  
+  if not fs.exists(BLOCKS_DIR) then
+    fs.makeDirectory(BLOCKS_DIR)
+  end
   local filename = tostring(block.index) .. ".dat"
   local path = BLOCKS_DIR .. "/" .. filename
   local f = assert(io.open(path, "w"))
