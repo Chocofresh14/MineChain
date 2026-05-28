@@ -36,7 +36,7 @@ function M.new(from, to, amount)
     from = from,
     to = to,
     amount = amount,
-    timestamp = os.time(),
+    timestamp = math.floor(os.time()),
     signature = nil, -- a remplir par le wallet avant envoi
     id = nil,        -- calcule apres signature
   }
@@ -54,7 +54,7 @@ function M.coinbase(to, amount)
     from = "coinbase", -- emetteur spécial, pas de signature
     to = to,
     amount = amount,
-    timestamp = os.time(),
+    timestamp = math.floor(os.time()),
     signature = "coinbase", -- valeur sentinelle reconnue par validate
   }
   tx.id = M.computeId(tx)
