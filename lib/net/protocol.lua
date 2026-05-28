@@ -113,6 +113,7 @@ end
 local required = {
   [M.MSG.JOIN] = { "address" },
   [M.MSG.PEERS] = { "peers" },
+  [M.MSG.NEW_PEER] = { "address" },
   [M.MSG.NEW_BLOCK] = { "block" },
   [M.MSG.NEW_TX] = { "transaction" },
   [M.MSG.GET_CHAIN] = { "from_index" },
