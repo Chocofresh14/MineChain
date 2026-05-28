@@ -90,23 +90,45 @@ function M.load()
     local path = BLOCKS_DIR .. "/" .. i .. ".dat"
 
     if not fs.exists(path) then
-      print(string.format("[sync] Fichier manquant : bloc #%d", i))
-      missing = true
-      break
+      -- Si c'est le bloc genesis (0) qui est manquant, on le recree
+      if i == 0 then
+        print("[sync] Bloc genesis manquant, recreation...")
+        local genesis = block.genesis()
+        saveBlock(genesis)
+        table.insert(_chain, genesis)
+      else
+        print(string.format("[sync] Fichier manquant : bloc #%d", i))
+        missing = true
+        break
+      end
+    else
+      local f, err = io.open(path, "r")
+      if not f then
+        print(string.format("[sync] Impossible d'ouvrir le fichier bloc #%d : %s", i, err or "unknown error"))
+        missing = true
+        break
+      end
+
+      local raw = f:read("*a")
+      f:close()
+
+      local ok, b = pcall(serialization.unserialize, raw)
+      if not ok or type(b) ~= "table" then
+        -- Si c'est le bloc genesis qui est corrompu, on le recree
+        if i == 0 then
+          print("[sync] Bloc genesis corrompu, recreation...")
+          local genesis = block.genesis()
+          saveBlock(genesis)
+          table.insert(_chain, genesis)
+        else
+          print(string.format("[sync] Bloc #%d corrompu : %s", i, raw:sub(1, 50) .. "..."))
+          missing = true
+          break
+        end
+      else
+        table.insert(_chain, b)
+      end
     end
-
-    local f   = assert(io.open(path, "r"))
-    local raw = f:read("*a")
-    f:close()
-
-    local ok, b = pcall(serialization.unserialize, raw)
-    if not ok or type(b) ~= "table" then
-      print(string.format("[sync] Bloc #%d corrompu", i))
-      missing = true
-      break
-    end
-
-    table.insert(_chain, b)
   end
 
   if missing then
