@@ -185,14 +185,15 @@ local function menu(title, options)
 end
 
 local COMMON_FILES = {
-  { "lib/crypto/hash.lua", "/lib/crypto/hash.lua" },
-  { "lib/crypto/keypair.lua", "/lib/crypto/keypair.lua" },
-  { "lib/crypto/sign.lua", "/lib/crypto/sign.lua" },
-  { "lib/types/block.lua", "/lib/types/block.lua" },
+  { "lib/crypto/sha256.lua",     "/lib/crypto/sha256.lua" },
+  { "lib/crypto/hash.lua",       "/lib/crypto/hash.lua" },
+  { "lib/crypto/keypair.lua",    "/lib/crypto/keypair.lua" },
+  { "lib/crypto/sign.lua",       "/lib/crypto/sign.lua" },
+  { "lib/types/block.lua",       "/lib/types/block.lua" },
   { "lib/types/transaction.lua", "/lib/types/transaction.lua" },
-  { "lib/net/modem.lua", "/lib/net/modem.lua" },
-  { "lib/net/protocol.lua", "/lib/net/protocol.lua" },
-  { "seeds.lua", "/etc/minechain/seeds.lua" },
+  { "lib/net/modem.lua",         "/lib/net/modem.lua" },
+  { "lib/net/protocol.lua",      "/lib/net/protocol.lua" },
+  { "seeds.lua",                 "/etc/minechain/seeds.lua" },
 }
 
 local PACKAGES = {}
@@ -200,8 +201,8 @@ local PACKAGES = {}
 PACKAGES["seed"] = {
   label = "Seed - Annuaire reseau",
   files = {
-    { "packages/seed/main.lua", "/minechain/main.lua" },
-    { "packages/seed/startup.lua", "/startup.lua"         },
+    { "packages/seed/main.lua",    "/minechain/main.lua" },
+    { "packages/seed/startup.lua", "/startup.lua" },
   },
   configure = function()
     print("")
@@ -224,11 +225,11 @@ PACKAGES["seed"] = {
 PACKAGES["node"] = {
   label = "Node - Noeud blockchain",
   files = {
-    { "packages/node/main.lua", "/minechain/main.lua"    },
-    { "packages/node/sync.lua", "/minechain/sync.lua"    },
-    { "packages/node/miner.lua", "/minechain/miner.lua"   },
-    { "packages/node/mempool.lua", "/minechain/mempool.lua" },
-    { "packages/node/startup.lua", "/startup.lua"            },
+    { "packages/node/main.lua",    "/minechain/main.lua" },
+    { "packages/node/sync.lua",    "/lib/node/sync.lua" },
+    { "packages/node/miner.lua",   "/lib/node/miner.lua" },
+    { "packages/node/mempool.lua", "/lib/node/mempool.lua" },
+    { "packages/node/startup.lua", "/startup.lua" },
   },
   configure = function()
     print("")
@@ -237,16 +238,24 @@ PACKAGES["node"] = {
     local port   = tonumber(ask("Port d'ecoute", 43))
     local mining = askBool("Activer le mining ?", false)
     local diff   = 3
+    local wallet = ""
 
     if mining then
       diff = tonumber(ask("Difficulte PoW (zeros requis en tete de hash)", 3))
+      wallet = ask("Adresse wallet pour recevoir les recompenses")
+
+      while wallet == "" or wallet == nil do
+        printColor("  L'adresse wallet est obligatoire pour miner.", colors.red)
+        wallet = ask("Adresse wallet")
+      end
     end
 
     return {
-      PACKAGE    = "node",
-      PORT       = port,
-      MINING     = mining,
+      PACKAGE = "node",
+      PORT = port,
+      MINING = mining,
       DIFFICULTY = diff,
+      WALLET_ADDRESS = wallet,
     }
   end,
   info = {
@@ -258,8 +267,8 @@ PACKAGES["node"] = {
 PACKAGES["wallet"] = {
   label = "Wallet - Portefeuille",
   files = {
-    { "packages/wallet/main.lua", "/minechain/main.lua" },
-    { "packages/wallet/startup.lua", "/startup.lua"         },
+    { "packages/wallet/main.lua",    "/minechain/main.lua" },
+    { "packages/wallet/startup.lua", "/startup.lua" },
   },
   configure = function()
     print("")
@@ -285,9 +294,9 @@ PACKAGES["wallet"] = {
 PACKAGES["explorer"] = {
   label = "Explorer - Explorateur de blocs",
   files = {
-    { "packages/explorer/main.lua", "/minechain/main.lua"     },
+    { "packages/explorer/main.lua",     "/minechain/main.lua" },
     { "packages/explorer/renderer.lua", "/minechain/renderer.lua" },
-    { "packages/explorer/startup.lua",  "/startup.lua"             },
+    { "packages/explorer/startup.lua",  "/startup.lua" },
   },
   configure = function()
     print("")
@@ -322,9 +331,9 @@ end
 printBanner()
 
 local choice = menu("Que souhaitez-vous installer ?", {
-  { key = "seed", label = PACKAGES["seed"].label     },
-  { key = "node", label = PACKAGES["node"].label     },
-  { key = "wallet", label = PACKAGES["wallet"].label   },
+  { key = "seed",     label = PACKAGES["seed"].label },
+  { key = "node",     label = PACKAGES["node"].label },
+  { key = "wallet",   label = PACKAGES["wallet"].label },
   { key = "explorer", label = PACKAGES["explorer"].label },
 })
 

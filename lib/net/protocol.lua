@@ -90,8 +90,8 @@ function M.newTx(transaction, publicKey)
   }
 end
 
-function M.getChain(fromIndex)
-  return { from_index = fromIndex or 0 }
+function M.getChain(fromIndex, count)
+  return { from_index = fromIndex or 0, count = count or 5 }
 end
 
 function M.chain(blocks)
