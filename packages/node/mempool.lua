@@ -51,7 +51,7 @@ function M.add(transaction, publicKey, chain)
   print(string.format("[mempool] +tx %s (%s -> %s, %d)",
     transaction.id:sub(1, 8) .. "...",
     transaction.from:sub(1, 8) .. "...",
-    transaction.to.sub(1, 8) .. "...",
+    transaction.to:sub(1, 8) .. "...",
     transaction.amount
   ))
 
