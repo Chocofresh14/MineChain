@@ -50,6 +50,8 @@ end
 
 load_config()
 
+modem.open(protocol.PORT_SEED)
+modem.open(wallet.port)
 
 local function input(label)
   io.write(label .. " ")
@@ -162,34 +164,24 @@ local function discover_node()
     return nil
   end
 
-  modem.open(protocol.PORT_SEED)
-  modem.open(wallet.port)
-
-  local queue = {}
+  local nodeQueue = {}
   local seen = {}
 
   local function enqueue(address)
     if type(address) == "string" and address ~= "" and not seen[address] then
       seen[address] = true
-      table.insert(queue, address)
+      table.insert(nodeQueue, address)
     end
   end
 
-  for _, address in ipairs(seeds) do
-    enqueue(address)
-  end
-
-  local index = 1
-  while index <= #queue do
-    local address = queue[index]
-    index = index + 1
-
-    modem.send(address, protocol.PORT_SEED, protocol.MSG.LIST, protocol.ping())
+  for _, seedAddr in ipairs(seeds) do
+    modem.send(seedAddr, protocol.PORT_SEED, protocol.MSG.LIST, protocol.ping())
 
     local started_at = computer.uptime()
     while (computer.uptime() - started_at) < 3 do
       local remoteAddr, msgType, data = modem.receive(protocol.PORT_SEED, 1)
-      if remoteAddr == address and msgType == protocol.MSG.PEERS and type(data.peers) == "table" then
+
+      if remoteAddr == seedAddr and msgType == protocol.MSG.PEERS and type(data.peers) == "table" then
         for _, candidate in ipairs(data.peers) do
           enqueue(candidate)
         end
@@ -198,13 +190,18 @@ local function discover_node()
     end
   end
 
-  for _, candidate in ipairs(queue) do
+  if #nodeQueue == 0 then
+    print("Erreur : aucun node connu des seeds.")
+    return nil
+  end
+
+  for _, candidate in ipairs(nodeQueue) do
     if try_node(candidate) then
       return candidate
     end
   end
 
-  print("Erreur : aucun node joignable detecte via seeds.lua.")
+  print("Erreur : aucun node joignable.")
   return nil
 end
 
@@ -220,8 +217,6 @@ local function fetch_chain(page_size)
   local count = page_size or 20
   local max_pages = 128
   local pages = 0
-
-  modem.open(wallet.port)
 
   while pages < max_pages do
     modem.send(wallet.node, wallet.port, protocol.MSG.GET_CHAIN, protocol.getChain(from_index, count))
@@ -283,7 +278,6 @@ local function query_node(msg_type, payload)
     return nil
   end
 
-  modem.open(wallet.port)
   modem.send(wallet.node, wallet.port, msg_type, payload)
 
   local deadline = os.time() + 5
@@ -369,7 +363,6 @@ local function send_tx()
     return
   end
 
-  modem.open(wallet.port)
   modem.send(wallet.node, wallet.port, protocol.MSG.NEW_TX, protocol.newTx(tx, serialize_public_key(wallet.pubkey)))
   print("Transaction envoyée au node.")
 end
