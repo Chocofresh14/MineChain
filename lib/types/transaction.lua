@@ -1,4 +1,3 @@
-local serialization = require("serialization")
 local hash = require("crypto/hash")
 local sign = require("crypto/sign")
 
@@ -6,15 +5,13 @@ local M = {}
 
 -- Serialisation
 
--- Serialise les champs signables d'une transaction
+-- Serialise les champs signables d'une transaction (ordre fixe, deterministe)
 -- On exclut "id" et "signature" (pas signes, logique)
 function M.serialize(tx)
-  return serialization.serialize({
-    from = tx.from,
-    to = tx.to,
-    amount = tx.amount,
-    timestamp = tx.timestamp,
-  })
+  return "amount=" .. tostring(tx.amount)
+      .. ",from=" .. tostring(tx.from)
+      .. ",timestamp=" .. tostring(tx.timestamp)
+      .. ",to=" .. tostring(tx.to)
 end
 
 -- ID de transaction
