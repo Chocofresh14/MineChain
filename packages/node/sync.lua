@@ -13,6 +13,7 @@ local cfg = assert(loadfile("/etc/minechain/config.lua"))()
 local PORT = cfg.PORT or 43
 local DIFFICULTY = cfg.DIFFICULTY or 3
 local CHAIN_PATH = "/etc/minechain/chain.dat"
+local BLOCK_PATH = "/etc/minechain/blocks"
 
 -- Shared State (injecté depuis node/main)
 -- sync.lua ne stocke pas la chaine lui-meme,
@@ -32,12 +33,26 @@ end
 
 -- Sauvegarde la chaine sur le disque
 function M.save()
-  local dir = fs.path(CHAIN_PATH)
-  if not fs.exists(dir) then fs.makeDirectory(dir) end
+  saveBlock(_chain[#_chain])
+end
 
-  local f = assert(io.open(CHAIN_PATH, "w"))
-  f:write(serialization.serialize(_chain))
+-- Sauvegarde les block sur le disque dans des fichiers différents
+function saveBlock(block)
+  local dir = fs.path(BLOCK_PATH)
+  if not fs.exists(dir) then fs.makeDirectory(dir) end
+  
+  local filename = tostring(block.index) .. ".dat"
+  local path = BLOCK_PATH .. / .. filename
+  local f = assert(io.open(path, "w"))
+  f:write(serialization.serialize(block))
   f:close()
+end
+
+-- Sauvegarde les blocks et les met dans une chain
+function saveChain()
+  for _, block in ipairs(blocks) do
+    M.saveBlock(block)
+  end
 end
 
 -- Charge la chaine depuis le disque
