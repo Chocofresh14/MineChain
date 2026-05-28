@@ -67,7 +67,9 @@ end
 
 handlers[protocol.MSG.LIST] = function(remoteAddr, data)
   if peers[remoteAddr] then refreshPeer(remoteAddr) end
-  net.send(remoteAddr, PORT, protocol.MSG.PEERS, protocol.peers(peerList()))
+  local list = peerList()
+  print(string.format("[?] LIST de %s  -> %d peer(s)", remoteAddr, #list))
+  net.send(remoteAddr, PORT, protocol.MSG.PEERS, protocol.peers(list))
 end
 
 handlers[protocol.MSG.PING] = function(remoteAddr, data)
