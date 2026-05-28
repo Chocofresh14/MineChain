@@ -1,6 +1,7 @@
 local component = require("component")
 local event = require("event")
 local serialization = require("serialization")
+local computer = requre("computer")
 
 local M = {}
 
@@ -8,6 +9,20 @@ local M = {}
 
 assert(component.isAvailable("modem"), "Carte reseau introuvable !")
 local _modem = component.modem
+
+-- Buffer par port : les messages recus sur un port non attendu sont stockes ici
+local _buffer = {}
+
+local function bufferPush(port, entry)
+  if not _buffer[port] then _buffer[port] = {} end
+  table.insert(_buffer[port], entry)
+end
+
+local function bufferPop(port)
+  if _buffer[port] and #_buffer[port] > 0 then
+    return table.remove(_buffer[port], 1)
+  end
+end
 
 -- Ouvre un port d'ecoute
 function M.open(port)
@@ -69,24 +84,35 @@ end
 function M.receive(port, timeout)
   timeout = timeout or 5
 
-  local ev = { event.pull(timeout, "modem_message") }
-
-  if ev[1] ~= "modem_message" then
-    return nil
+  local buffered = bufferPop(port)
+  if buffered then
+    return table.unpack(buffered)
   end
 
-  local _, localAddr, remoteAddr, evPort, _, raw = table.unpack(ev)
+  local deadline = computer.uptime() + timeout
 
-  if evPort ~= port then
-    return nil
+  while computer.uptime() < deadline do
+    local remaining = deadline - computer.uptime()
+    if remaining <= 0 then break end
+
+    local ev = { event.pull(math.max(remaining, 0.05), "modem_message") }
+    if ev[1] ~= "modem_message" then break end
+
+    local _, _, remoteAddr, evPort, _, raw = table.unpack(ev)
+    local ok, msg = pcall(serialization.unserialize, raw)
+
+    if not ok or type(msg) ~= "table" or not msg.type then
+      -- message malforme, on ignore
+    elseif evPort == port then
+      -- c'est pour nous
+      return remoteAddr, msg.type, msg.data or {}
+    else
+      -- mauvais port : on bufferise pour plus tard au lieu de jeter
+      bufferPush(evPort, { remoteAddr, msg.type, msg.data or {} })
+    end
   end
 
-  local ok, msg = pcall(serialization.unserialize, raw)
-  if not ok or type(msg) ~= "table" or not msg.type then
-    return nil, remoteAddr, nil, nil
-  end
-
-  return remoteAddr, msg.type, msg.data or {}
+  return nil
 end
 
 -- Ecoute en boucle et dispatch vers des handlers
