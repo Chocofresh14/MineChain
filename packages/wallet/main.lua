@@ -1,32 +1,53 @@
---  Dépendances :
---    lib/crypto/keypair.lua   -> keypair.generate(), keypair.load(), keypair.save()
---    lib/crypto/sign.lua      -> sign.sign(privkey, data), sign.verify(pubkey, data, sig)
---    lib/crypto/sha256.lua    -> sha256.hash(str)
---    lib/types/transaction.lua-> transaction.new(from, to, amount, nonce), transaction.serialize()
---    lib/net/modem.lua        -> modem.open(port), modem.send(addr, port, msg), modem.broadcast(port, msg)
---    lib/net/protocol.lua     -> protocol.PORTS, protocol.wrap(type, payload), protocol.unwrap(raw)
-
-
 local fs     = require("filesystem")
 local serial = require("serialization")
+local event   = require("event")
 
-local keypair = dofile("crypto/keypair.lua")
-local sha256  = dofile("crypto/sha256.lua")
-local sign    = dofile("crypto/sign.lua")
-local TxLib   = dofile("types/transaction.lua")
-local modem   = dofile("net/modem.lua")
-local protocol= dofile("net/protocol.lua")
+local keypair = require("crypto/keypair")
+local sign    = require("crypto/sign")
+local TxLib   = require("types/transaction")
+local modem   = require("net/modem")
+local protocol= require("net/protocol")
 
-local KEY_FILE  = "/minechain/keys.dat"
-local NODE_FILE = "/minechain/node.cfg"
+local CONFIG_FILE    = "/etc/minechain/config.lua"
+local DEFAULT_KEYDIR = "/etc/minechain/wallet/"
 
 local wallet = {
   pubkey  = nil,
   privkey = nil,
   address = nil,
   node    = nil,
-  nonce   = 0,
+  port    = protocol.PORT_NODE,
+  keydir  = DEFAULT_KEYDIR,
+  nodecfg = DEFAULT_KEYDIR .. "node.cfg",
 }
+
+local function normalize_dir(path)
+  if not path or path == "" then
+    return DEFAULT_KEYDIR
+  end
+  if path:sub(-1) ~= "/" then
+    return path .. "/"
+  end
+  return path
+end
+
+local function load_config()
+  local loader = loadfile(CONFIG_FILE)
+  if not loader then
+    return
+  end
+
+  local ok, cfg = pcall(loader)
+  if not ok or type(cfg) ~= "table" then
+    return
+  end
+
+  wallet.port = tonumber(cfg.PORT) or wallet.port
+  wallet.keydir = normalize_dir(cfg.KEY_PATH)
+  wallet.nodecfg = wallet.keydir .. "node.cfg"
+end
+
+load_config()
 
 
 local function input(label)
@@ -34,38 +55,109 @@ local function input(label)
   return io.read()
 end
 
-local function derive_address(pub)
-  return sha256.hash(pub):sub(1, 40)
+local function read_file(path)
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+
+  local content = file:read("*a")
+  file:close()
+  return content
+end
+
+local function ensure_wallet_dir()
+  if not fs.exists(wallet.keydir) then
+    fs.makeDirectory(wallet.keydir)
+  end
+end
+
+local function apply_keys(keys)
+  wallet.pubkey = keys.public
+  wallet.privkey = keys.private
+  wallet.address = keys.address or keypair.addressFrom(keys.public)
+end
+
+local function serialize_public_key(pubkey)
+  return serial.serialize(pubkey.serialize())
+end
+
+local function persist_node()
+  ensure_wallet_dir()
+  local file = io.open(wallet.nodecfg, "w")
+  file:write(wallet.node or "")
+  file:close()
+end
+
+local function persist_keys()
+  ensure_wallet_dir()
+  keypair.save({
+    public = wallet.pubkey,
+    private = wallet.privkey,
+    address = wallet.address,
+  }, wallet.keydir)
 end
 
 local function load_persisted()
-  if fs.exists(KEY_FILE) then
-    local f = io.open(KEY_FILE, "r")
-    local data = serial.unserialize(f:read("*a"))
-    f:close()
-    if data and data.pub then
-      wallet.pubkey  = data.pub
-      wallet.privkey = data.priv
-      wallet.address = derive_address(data.pub)
+  if keypair.exists(wallet.keydir) then
+    local keys, err = keypair.load(wallet.keydir)
+    if keys then
+      apply_keys(keys)
       print("Clés chargées automatiquement.")
+    else
+      print("Erreur chargement clés : " .. tostring(err))
     end
   end
-  if fs.exists(NODE_FILE) then
-    local f = io.open(NODE_FILE, "r")
-    wallet.node = f:read("*a")
-    f:close()
+
+  local node = read_file(wallet.nodecfg)
+  if node and node ~= "" then
+    wallet.node = node:gsub("%s+$", "")
     print("Node : " .. wallet.node)
   end
 end
 
-local function save_keys()
-  if not fs.exists("/minechain/wallet") then
-    fs.makeDirectory("/minechain/wallet")
+local function fetch_chain(page_size)
+  if not wallet.node then
+    print("Erreur : aucun node configuré.")
+    return nil
   end
-  local f = io.open(KEY_FILE, "w")
-  f:write(serial.serialize({ pub = wallet.pubkey, priv = wallet.privkey }))
-  f:close()
-  print("Clés sauvegardées.")
+
+  local blocks = {}
+  local from_index = 0
+  local timeout = 5
+  local count = page_size or 20
+
+  modem.open(wallet.port)
+
+  while true do
+    modem.send(wallet.node, wallet.port, protocol.MSG.GET_CHAIN, protocol.getChain(from_index, count))
+
+    local deadline = os.time() + timeout
+    local response = nil
+    while os.time() < deadline do
+      local remoteAddr, msgType, data = modem.receive(wallet.port, 1)
+      if remoteAddr == wallet.node and msgType == protocol.MSG.CHAIN then
+        response = data
+        break
+      end
+    end
+
+    if not response or type(response.blocks) ~= "table" or #response.blocks == 0 then
+      break
+    end
+
+    for _, block in ipairs(response.blocks) do
+      table.insert(blocks, block)
+    end
+
+    if #response.blocks < count then
+      break
+    end
+
+    from_index = from_index + #response.blocks
+  end
+
+  return blocks
 end
 
 local function query_node(msg_type, payload)
@@ -73,95 +165,113 @@ local function query_node(msg_type, payload)
     print("Erreur : aucun node configuré.")
     return nil
   end
-  local port = protocol.PORTS.wallet
-  modem.open(port)
-  modem.send(wallet.node, protocol.PORTS.node, protocol.wrap(msg_type, payload))
 
-  local ev, _, _, _, _, raw = event.pull(5, "modem_message")
-  if not ev then
-    print("Erreur : timeout, node injoignable.")
-    return nil
+  modem.open(wallet.port)
+  modem.send(wallet.node, wallet.port, msg_type, payload)
+
+  local deadline = os.time() + 5
+  while os.time() < deadline do
+    local remoteAddr, respType, data = modem.receive(wallet.port, 1)
+    if remoteAddr == wallet.node then
+      return respType, data
+    end
   end
-  return protocol.unwrap(raw)
+
+  print("Erreur : timeout, node injoignable.")
+  return nil
 end
 
 
 local function generate_keys()
-  wallet.pubkey, wallet.privkey = keypair.generate()
-  wallet.address = derive_address(wallet.pubkey)
-  wallet.nonce   = 0
+  apply_keys(keypair.generate())
   print("Adresse : " .. wallet.address)
   local ans = input("Sauvegarder ? (o/n)")
-  if ans == "o" then save_keys() end
+  if ans == "o" then
+    persist_keys()
+  end
 end
 
 local function load_keys()
-  if not fs.exists(KEY_FILE) then
-    print("Aucun fichier trouvé : " .. KEY_FILE)
+  local keys, err = keypair.load(wallet.keydir)
+  if not keys then
+    print("Aucun fichier trouvé : " .. tostring(err))
     return
   end
-  local f = io.open(KEY_FILE, "r")
-  local data = serial.unserialize(f:read("*a"))
-  f:close()
-  wallet.pubkey  = data.pub
-  wallet.privkey = data.priv
-  wallet.address = derive_address(data.pub)
-  wallet.nonce   = 0
+  apply_keys(keys)
   print("Adresse : " .. wallet.address)
 end
 
 local function show_balance()
-  if not wallet.address then print("Aucune clé chargée.") return end
-  local resp = query_node("GET_BALANCE", { address = wallet.address })
-  if resp and resp.type == "BALANCE" then
-    print("Solde : " .. resp.payload.balance .. " MC")
-    wallet.nonce = resp.payload.nonce or wallet.nonce
+  if not wallet.address then
+    print("Aucune clé chargée.")
+    return
   end
+
+  local blocks = fetch_chain(20)
+  if not blocks then
+    return
+  end
+
+  print("Solde : " .. TxLib.balanceOf(wallet.address, blocks) .. " MC")
 end
 
 local function send_tx()
-  if not wallet.address or not wallet.privkey then
-    print("Aucune clé chargée.") return
+  if not wallet.address or not wallet.privkey or not wallet.pubkey then
+    print("Aucune clé chargée.")
+    return
   end
+
   local to     = input("Destinataire :")
   local amount = tonumber(input("Montant (MC) :"))
-  if not amount or amount <= 0 then print("Montant invalide.") return end
+  if not amount or amount <= 0 then
+    print("Montant invalide.")
+    return
+  end
 
-  local nonce = wallet.nonce + 1
-  local tx    = TxLib.new(wallet.address, to, amount, nonce)
-  tx:set_signature(sign.sign(wallet.privkey, tx:serialize()))
+  local blocks = fetch_chain(20)
+  if not blocks then
+    return
+  end
+
+  local fundsOk, fundsErr = TxLib.hasFunds({ from = wallet.address, amount = amount }, blocks)
+  if not fundsOk then
+    print(fundsErr)
+    return
+  end
+
+  local tx = TxLib.new(wallet.address, to, amount)
+  local signature = sign.sign(TxLib.serialize(tx), wallet.privkey)
+  tx = TxLib.attach(tx, signature)
 
   print("De      : " .. wallet.address)
   print("Vers    : " .. to)
   print("Montant : " .. amount .. " MC")
   local ans = input("Confirmer ? (o/n)")
-  if ans ~= "o" then print("Annulé.") return end
-
-  local resp = query_node("BROADCAST_TX", { tx = tx:to_table() })
-  if resp and resp.type == "TX_ACCEPTED" then
-    wallet.nonce = nonce
-    print("Transaction acceptée ! Hash : " .. (resp.payload.hash or "?"))
-  elseif resp and resp.type == "TX_REJECTED" then
-    print("Transaction rejetée : " .. (resp.payload.reason or "?"))
+  if ans ~= "o" then
+    print("Annulé.")
+    return
   end
+
+  modem.open(wallet.port)
+  modem.send(wallet.node, wallet.port, protocol.MSG.NEW_TX, protocol.newTx(tx, serialize_public_key(wallet.pubkey)))
+  print("Transaction envoyée au node.")
 end
 
 local function config_node()
   local addr = input("Adresse modem du node :")
   wallet.node = addr
-  if not fs.exists("/minechain/wallet") then
-    fs.makeDirectory("/minechain/wallet")
-  end
-  local f = io.open(NODE_FILE, "w")
-  f:write(addr)
-  f:close()
+  persist_node()
   print("Node sauvegardé.")
 end
 
 local function show_info()
-  if not wallet.address then print("Aucune clé chargée.") return end
+  if not wallet.address then
+    print("Aucune clé chargée.")
+    return
+  end
   print("Adresse : " .. wallet.address)
-  print("Nonce   : " .. wallet.nonce)
+  print("Port    : " .. wallet.port)
+  print("Clés    : " .. wallet.keydir)
   print("Node    : " .. (wallet.node or "non configuré"))
 end
 
