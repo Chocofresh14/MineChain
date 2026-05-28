@@ -3,8 +3,8 @@
 --    lib/net/protocol.lua     -> protocol.PORTS, protocol.wrap(type, payload), protocol.unwrap(raw)
 
 
-local modem    = dofile("net/modem.lua")
-local protocol = dofile("net/protocol.lua")
+local modem    = require("net/modem.lua")
+local protocol = require("net/protocol.lua")
 
 local NODE_FILE = "/minechain/wallet/node.cfg"
 local node = nil

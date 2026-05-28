@@ -1,6 +1,6 @@
 local fs     = require("filesystem")
 local serial = require("serialization")
-local event   = require("event")
+local computer = require("computer")
 
 local keypair = require("crypto/keypair")
 local sign    = require("crypto/sign")
@@ -126,15 +126,17 @@ local function fetch_chain(page_size)
   local from_index = 0
   local timeout = 5
   local count = page_size or 20
+  local max_pages = 128
+  local pages = 0
 
   modem.open(wallet.port)
 
-  while true do
+  while pages < max_pages do
     modem.send(wallet.node, wallet.port, protocol.MSG.GET_CHAIN, protocol.getChain(from_index, count))
 
-    local deadline = os.time() + timeout
     local response = nil
-    while os.time() < deadline do
+    local started_at = computer.uptime()
+    while (computer.uptime() - started_at) < timeout do
       local remoteAddr, msgType, data = modem.receive(wallet.port, 1)
       if remoteAddr == wallet.node and msgType == protocol.MSG.CHAIN then
         response = data
@@ -142,9 +144,21 @@ local function fetch_chain(page_size)
       end
     end
 
-    if not response or type(response.blocks) ~= "table" or #response.blocks == 0 then
+    if not response then
+      print("Erreur : timeout, node injoignable.")
+      return nil
+    end
+
+    if type(response.blocks) ~= "table" then
+      print("Erreur : reponse CHAIN invalide.")
+      return nil
+    end
+
+    if #response.blocks == 0 then
       break
     end
+
+    local previous_from_index = from_index
 
     for _, block in ipairs(response.blocks) do
       table.insert(blocks, block)
@@ -155,6 +169,17 @@ local function fetch_chain(page_size)
     end
 
     from_index = from_index + #response.blocks
+    if from_index <= previous_from_index then
+      print("Erreur : progression de synchronisation invalide.")
+      return nil
+    end
+
+    pages = pages + 1
+  end
+
+  if pages >= max_pages then
+    print("Erreur : trop de pages recues (boucle de sync interrompue).")
+    return nil
   end
 
   return blocks
