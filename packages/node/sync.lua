@@ -344,7 +344,9 @@ end
 
 -- Repond à GET_LAST
 function M.onGetLast(remoteAddr)
-  net.send(remoteAddr, PORT, proto.MSG.LAST_BLOCK, proto.lastBlock(lastBlock()))
+  local lb = lastBlock()
+  print(string.format("[sync] GET_LAST de %s -> envoi bloc #%s", remoteAddr, lb and lb.index or "nil"))
+  net.send(remoteAddr, PORT, proto.MSG.LAST_BLOCK, proto.lastBlock(lb))
 end
 
 -- Repond à GET_CHAIN

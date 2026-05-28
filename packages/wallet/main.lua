@@ -138,11 +138,15 @@ local function load_seeds()
 end
 
 local function try_node(candidate)
+  print("[try_node] Envoi GET_LAST -> " .. candidate .. " sur port " .. wallet.port)
   modem.send(candidate, wallet.port, protocol.MSG.GET_LAST, protocol.getLast())
 
   local started_at = computer.uptime()
   while (computer.uptime() - started_at) < 2 do
     local remoteAddr, msgType, respData = modem.receive(wallet.port, 1)
+    if remoteAddr then
+      print("[try_node] Recu " .. tostring(msgType) .. " de " .. tostring(remoteAddr))
+    end
     if remoteAddr == candidate and msgType == protocol.MSG.LAST_BLOCK and respData and respData.block then
       wallet.node = candidate
       ensure_wallet_dir()
@@ -154,6 +158,7 @@ local function try_node(candidate)
     end
   end
 
+  print("[try_node] Timeout, pas de reponse de " .. candidate)
   return nil
 end
 
