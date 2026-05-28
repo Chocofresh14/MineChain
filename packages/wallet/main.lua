@@ -135,6 +135,26 @@ local function load_seeds()
   return read_table_file(SEEDS_FILE) or {}
 end
 
+local function try_node(candidate)
+  modem.send(candidate, wallet.port, protocol.MSG.GET_LAST, protocol.getLast())
+
+  local started_at = computer.uptime()
+  while (computer.uptime() - started_at) < 2 do
+    local remoteAddr, msgType, respData = modem.receive(wallet.port, 1)
+    if remoteAddr == candidate and msgType == protocol.MSG.LAST_BLOCK and respData and respData.block then
+      wallet.node = candidate
+      ensure_wallet_dir()
+      local file = io.open(wallet.nodecfg, "w")
+      file:write(candidate)
+      file:close()
+      print("Node detecte : " .. candidate)
+      return candidate
+    end
+  end
+
+  return nil
+end
+
 local function discover_node()
   local seeds = load_seeds()
   if #seeds == 0 then
@@ -142,33 +162,45 @@ local function discover_node()
     return nil
   end
 
+  modem.open(protocol.PORT_SEED)
   modem.open(wallet.port)
 
-  for _, seedAddr in ipairs(seeds) do
-    modem.send(seedAddr, protocol.PORT_SEED, protocol.MSG.LIST, protocol.ping())
+  local queue = {}
+  local seen = {}
+
+  local function enqueue(address)
+    if type(address) == "string" and address ~= "" and not seen[address] then
+      seen[address] = true
+      table.insert(queue, address)
+    end
+  end
+
+  for _, address in ipairs(seeds) do
+    enqueue(address)
+  end
+
+  local index = 1
+  while index <= #queue do
+    local address = queue[index]
+    index = index + 1
+
+    modem.send(address, protocol.PORT_SEED, protocol.MSG.LIST, protocol.ping())
 
     local started_at = computer.uptime()
     while (computer.uptime() - started_at) < 3 do
       local remoteAddr, msgType, data = modem.receive(protocol.PORT_SEED, 1)
-      if remoteAddr == seedAddr and msgType == protocol.MSG.PEERS and type(data.peers) == "table" then
+      if remoteAddr == address and msgType == protocol.MSG.PEERS and type(data.peers) == "table" then
         for _, candidate in ipairs(data.peers) do
-          modem.send(candidate, wallet.port, protocol.MSG.GET_LAST, protocol.getLast())
-
-          local probeStart = computer.uptime()
-          while (computer.uptime() - probeStart) < 1 do
-            local nodeAddr, respType, respData = modem.receive(wallet.port, 1)
-            if nodeAddr == candidate and respType == protocol.MSG.LAST_BLOCK and respData and respData.block then
-              wallet.node = candidate
-              ensure_wallet_dir()
-              local file = io.open(wallet.nodecfg, "w")
-              file:write(candidate)
-              file:close()
-              print("Node detecte : " .. candidate)
-              return candidate
-            end
-          end
+          enqueue(candidate)
         end
+        break
       end
+    end
+  end
+
+  for _, candidate in ipairs(queue) do
+    if try_node(candidate) then
+      return candidate
     end
   end
 
