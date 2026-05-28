@@ -7,6 +7,7 @@ local mempool = require("node/mempool")
 local miner = require("node/miner")
 local component = require("component")
 local event = require("event")
+local computer = require("computer")
 
 local cfg = assert(loadfile("/etc/minechain/config.lua"))()
 local PORT = cfg.PORT    or 43
