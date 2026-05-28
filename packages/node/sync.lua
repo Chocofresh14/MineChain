@@ -13,7 +13,7 @@ local cfg = assert(loadfile("/etc/minechain/config.lua"))()
 local PORT = cfg.PORT or 43
 local DIFFICULTY = cfg.DIFFICULTY or 3
 local CHAIN_PATH = "/etc/minechain/chain.dat"
-local BLOCK_PATH = "/etc/minechain/blocks"
+local BLOCKS_DIR = "/etc/minechain/blocks"
 
 -- Shared State (injecté depuis node/main)
 -- sync.lua ne stocke pas la chaine lui-meme,
@@ -31,25 +31,28 @@ end
 
 -- Persistance
 
--- Sauvegarde la chaine sur le disque
-function M.save()
-  saveBlock(_chain[#_chain])
-end
-
 -- Sauvegarde les block sur le disque dans des fichiers différents
-function saveBlock(block)
-  local dir = fs.path(BLOCK_PATH)
+local function saveBlock(block)
+  local dir = fs.path(BLOCKS_DIR)
   if not fs.exists(dir) then fs.makeDirectory(dir) end
   
   local filename = tostring(block.index) .. ".dat"
-  local path = BLOCK_PATH .. / .. filename
+  local path = BLOCKS_DIR .. "/" .. filename
   local f = assert(io.open(path, "w"))
   f:write(serialization.serialize(block))
   f:close()
 end
 
+-- Sauvegarde la chaine sur le disque
+function M.save()
+  saveBlock(_chain[#_chain])
+end
+
 -- Sauvegarde les blocks et les met dans une chain
-function saveChain()
+function saveChain(blocks)
+  if not fs.exists(BLOCKS_DIR) then
+    fs.makeDirectory(BLOCKS_DIR)
+  end
   for _, block in ipairs(blocks) do
     M.saveBlock(block)
   end
@@ -58,48 +61,74 @@ end
 -- Charge la chaine depuis le disque
 -- Retourne true si une chaine existante a ete trouvee
 function M.load()
-  if not fs.exists(CHAIN_PATH) then
+  if not fs.exists(BLOCKS_DIR) then
     -- Premiere fois : on part du genesis
     table.insert(_chain, block.genesis())
+    saveBlock(block.genesis())
     print("[sync] Aucune chaine locale, demarrage depuis le genesis.")
     return false
   end
 
-  local f = assert(io.open(CHAIN_PATH, "r"))
-  local raw = f:read("*a")
-  f:close()
-
-  local ok, loaded = pcall(serialization.unserialize, raw)
-  if not ok or type(loaded) ~= "table" or #loaded == 0 then
-    print("[sync] Chaine locale corrompue, repartir du genesis.")
-    table.insert(_chain, block.genesis())
-    return false
-  end
-
-  -- Validation legere : verifie juste l'enchaînement des hash
-  local function validateSequence(blocks)
-    for i = 2, #blocks do
-      if blocks[i].prev_hash ~= blocks[i - 1].hash then
-        return false, "Chaine cassee au bloc #" .. blocks[i].index
-      end
+  local maxIndex = -1
+  for file in fs.list(BLOCKS_DIR) do
+    local idx = tonumber(file:match("^(%d+)%.dat$"))
+    if idx and idx > maxIndex then
+      maxIndex = idx
     end
-    return true
   end
 
-
-  -- Valide la chaine chargee avant de l'adopter
-  local valid, err = validateSequence(loaded)
-  if not valid then
-    print("[sync] Chaine locale invalide (" .. err .. "), repartir du genesis.")
+  if maxIndex < 0 then
     table.insert(_chain, block.genesis())
+    saveBlock(block.genesis())
+    print("[sync] Aucun bloc sur disque, demarrage depuis le genesis.")
     return false
   end
 
-  for _, b in ipairs(loaded) do
+  -- Charge les blocs dans l'ordre
+  local missing = false
+  for i = 0, maxIndex do
+    local path = BLOCKS_DIR .. "/" .. i .. ".dat"
+
+    if not fs.exists(path) then
+      print(string.format("[sync] Fichier manquant : bloc #%d", i))
+      missing = true
+      break
+    end
+
+    local f   = assert(io.open(path, "r"))
+    local raw = f:read("*a")
+    f:close()
+
+    local ok, b = pcall(serialization.unserialize, raw)
+    if not ok or type(b) ~= "table" then
+      print(string.format("[sync] Bloc #%d corrompu", i))
+      missing = true
+      break
+    end
+
     table.insert(_chain, b)
   end
 
-  print(string.format("[sync] Chaine locale chargee : %d blocs.", #_chain))
+  if missing then
+    -- Repart du genesis si la chaine est incomplete
+    while #_chain > 0 do table.remove(_chain) end
+    table.insert(_chain, block.genesis())
+    saveBlock(block.genesis())
+    print("[sync] Chaine incomplete, repartir du genesis.")
+    return false
+  end
+
+  -- Validation de l'enchainement
+  for i = 2, #_chain do
+    if _chain[i].prev_hash ~= _chain[i-1].hash then
+      print(string.format("[sync] Chaine cassee au bloc #%d", _chain[i].index))
+      while #_chain > 0 do table.remove(_chain) end
+      table.insert(_chain, block.genesis())
+      return false
+    end
+  end
+
+  print(string.format("[sync] Chaine chargee : %d blocs.", #_chain))
   return true
 end
 
@@ -200,7 +229,7 @@ function M.syncFromPeer(peerAddr)
     table.insert(_chain, b)
   end
 
-  M.save()
+  saveChain(newChain)
   print(string.format("[sync] Chaine adoptee : %d blocs.", #_chain))
   return true
 end
