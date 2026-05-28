@@ -9,6 +9,7 @@ local modem   = require("net/modem")
 local protocol= require("net/protocol")
 
 local CONFIG_FILE    = "/etc/minechain/config.lua"
+local SEEDS_FILE     = "/etc/minechain/seeds.lua"
 local DEFAULT_KEYDIR = "/etc/minechain/wallet/"
 
 local wallet = {
@@ -66,6 +67,20 @@ local function read_file(path)
   return content
 end
 
+local function read_table_file(path)
+  local loader = loadfile(path)
+  if not loader then
+    return nil
+  end
+
+  local ok, value = pcall(loader)
+  if not ok or type(value) ~= "table" then
+    return nil
+  end
+
+  return value
+end
+
 local function ensure_wallet_dir()
   if not fs.exists(wallet.keydir) then
     fs.makeDirectory(wallet.keydir)
@@ -116,8 +131,53 @@ local function load_persisted()
   end
 end
 
+local function load_seeds()
+  return read_table_file(SEEDS_FILE) or {}
+end
+
+local function discover_node()
+  local seeds = load_seeds()
+  if #seeds == 0 then
+    print("Erreur : aucun seed configure dans " .. SEEDS_FILE)
+    return nil
+  end
+
+  modem.open(wallet.port)
+
+  for _, seedAddr in ipairs(seeds) do
+    modem.send(seedAddr, protocol.PORT_SEED, protocol.MSG.LIST, protocol.ping())
+
+    local started_at = computer.uptime()
+    while (computer.uptime() - started_at) < 3 do
+      local remoteAddr, msgType, data = modem.receive(protocol.PORT_SEED, 1)
+      if remoteAddr == seedAddr and msgType == protocol.MSG.PEERS and type(data.peers) == "table" then
+        for _, candidate in ipairs(data.peers) do
+          modem.send(candidate, wallet.port, protocol.MSG.GET_LAST, protocol.getLast())
+
+          local probeStart = computer.uptime()
+          while (computer.uptime() - probeStart) < 1 do
+            local nodeAddr, respType, respData = modem.receive(wallet.port, 1)
+            if nodeAddr == candidate and respType == protocol.MSG.LAST_BLOCK and respData and respData.block then
+              wallet.node = candidate
+              ensure_wallet_dir()
+              local file = io.open(wallet.nodecfg, "w")
+              file:write(candidate)
+              file:close()
+              print("Node detecte : " .. candidate)
+              return candidate
+            end
+          end
+        end
+      end
+    end
+  end
+
+  print("Erreur : aucun node joignable detecte via seeds.lua.")
+  return nil
+end
+
 local function fetch_chain(page_size)
-  if not wallet.node then
+  if not wallet.node and not discover_node() then
     print("Erreur : aucun node configuré.")
     return nil
   end
@@ -186,7 +246,7 @@ local function fetch_chain(page_size)
 end
 
 local function query_node(msg_type, payload)
-  if not wallet.node then
+  if not wallet.node and not discover_node() then
     print("Erreur : aucun node configuré.")
     return nil
   end
@@ -283,10 +343,9 @@ local function send_tx()
 end
 
 local function config_node()
-  local addr = input("Adresse modem du node :")
-  wallet.node = addr
-  persist_node()
-  print("Node sauvegardé.")
+  if discover_node() then
+    print("Node sauvegarde automatiquement.")
+  end
 end
 
 local function show_info()
@@ -306,7 +365,7 @@ local menu = {
   { label = "Charger les clés du disque", fn = load_keys     },
   { label = "Afficher le solde",          fn = show_balance  },
   { label = "Envoyer une transaction",    fn = send_tx       },
-  { label = "Configurer le node",         fn = config_node   },
+  { label = "Detecter le node",            fn = config_node   },
   { label = "Infos du wallet",            fn = show_info     },
   { label = "Quitter",                    fn = nil           },
 }
