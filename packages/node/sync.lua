@@ -3,6 +3,7 @@ local proto = require("net/protocol")
 local block = require("types/block")
 local fs = require("filesystem")
 local serialization = require("serialization")
+local computer = require("computer")
 
 local M = {}
 
@@ -107,13 +108,20 @@ local function request(peerAddr, msgType, payload, expectedType, timeout)
   timeout = timeout or 5
   net.send(peerAddr, PORT, msgType, payload)
 
-  local deadline = os.time() + timeout
-  while os.time() < deadline do
-    local remoteAddr, rType, rData = net.receive(PORT, 1)
+  local deadline = computer.uptime() + timeout
+
+  while computer.uptime() < deadline do
+    local remaining = deadline - computer.uptime()
+    if remaining <= 0 then break end
+
+    local remoteAddr, rType, rData = net.receive(PORT, math.min(1, remaining))
+
     if remoteAddr == peerAddr and rType == expectedType then
       return rData
     end
+    -- message non attendu : on ignore et on reboucle (il est bufferise par net.receive)
   end
+
   return nil
 end
 
